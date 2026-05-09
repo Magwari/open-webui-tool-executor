@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tool-executor"
+version = "1.0.0"
+description = "FastAPI proxy server that executes builtin tools for OpenWebUI LLM responses"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "aiohttp>=3.9.0",
+    "pydantic>=2.6.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.scripts]
+tool-executer-server = "tool_executor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

@@ -357,7 +357,7 @@ if __name__ == '__main__':
     import uvicorn
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(
-        'main:app',
+        'tool_executor.main:app',
         host=settings.SERVER_HOST,
         port=settings.SERVER_PORT,
         reload=True,
