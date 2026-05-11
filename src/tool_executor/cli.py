@@ -52,20 +52,27 @@ def _remove_pid() -> None:
 
 
 def _is_process_running(pid: int) -> bool:
-    """Check if a process with the given PID is currently running (Windows)."""
-    import ctypes
-    kernel32 = ctypes.windll.kernel32
-    PROCESS_TERMINATE = 1
-    PROCESS_QUERY_INFORMATION = 0x0400
+    """Check if a process with the given PID is currently running."""
+    if sys.platform == 'win32':
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_INFORMATION = 0x0400
 
-    try:
-        handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
-        if handle:
-            kernel32.CloseHandle(handle)
+        try:
+            handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
+            if handle:
+                kernel32.CloseHandle(handle)
+                return True
+            return False
+        except Exception:
+            return False
+    else:
+        # Linux/macOS: os.kill(pid, 0) checks if process exists without sending a signal
+        try:
+            os.kill(pid, 0)
             return True
-        return False
-    except Exception:
-        return False
+        except OSError:
+            return False
 
 
 def cmd_start(args: argparse.Namespace) -> None:
@@ -92,13 +99,30 @@ def cmd_start(args: argparse.Namespace) -> None:
     log.info(f'Starting server: {" ".join(cmd)}')
 
     try:
-        # Create the process detached so it survives after CLI exits
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW,  # Windows: no console window
-        )
+        if sys.platform == 'win32':
+            # Windows: create detached process with no console window
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        else:
+            # Linux/macOS: start in new session, redirect output to log file
+            log_path = os.getenv('LOG_PATH')
+            if log_path:
+                log_file = Path(log_path)
+                log_file.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                log_file = _PID_DIR / 'server.log'
+            with open(log_file, 'a') as f_out:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=f_out,
+                    stderr=f_out,
+                    start_new_session=True,
+                )
+
         _write_pid(process.pid)
         log.info(f'Server started (PID: {process.pid})')
         log.info(f'Listening on {settings.SERVER_HOST}:{settings.SERVER_PORT}')
@@ -121,19 +145,23 @@ def cmd_stop(args: argparse.Namespace) -> None:
         return
 
     try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        PROCESS_TERMINATE = 1
+        if sys.platform == 'win32':
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            PROCESS_TERMINATE = 1
 
-        # Try graceful termination first via TerminateProcess (simple and reliable on Windows)
-        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-        if handle:
-            kernel32.TerminateProcess(handle, 0)
-            kernel32.CloseHandle(handle)
-            log.info(f'Server stopped (PID: {pid})')
+            handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+            if handle:
+                kernel32.TerminateProcess(handle, 0)
+                kernel32.CloseHandle(handle)
+                log.info(f'Server stopped (PID: {pid})')
+            else:
+                log.error(f'Could not open process {pid}')
+                sys.exit(1)
         else:
-            log.error(f'Could not open process {pid}')
-            sys.exit(1)
+            # Linux/macOS: send SIGTERM for graceful shutdown
+            os.kill(pid, signal.SIGTERM)
+            log.info(f'Server stopped (PID: {pid})')
     except Exception as e:
         log.error(f'Failed to stop server: {e}')
         sys.exit(1)
