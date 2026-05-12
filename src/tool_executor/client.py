@@ -79,6 +79,45 @@ class OpenWebUIClient:
                 raise Exception(f'OpenWebUI error: {response.status} - {error_body}')
             return await response.json()
 
+    # ─── Chat Completions (Streaming) ────
+
+    async def chat_completions_stream(
+        self,
+        model: str,
+        messages: list[dict],
+        **kwargs,
+    ):
+        """
+        Stream chat completion from OpenWebUI as SSE events.
+        Yields raw SSE text lines from the response.
+        """
+        import aiohttp
+
+        payload = {
+            'model': model,
+            'messages': messages,
+            'stream': True,
+            **kwargs,
+        }
+
+        url = f'{settings.OPENWEBUI_BASE_URL}/api/chat/completions'
+
+        async with self.session.post(
+            url,
+            json=payload,
+            headers={
+                'Authorization': f'Bearer {settings.OPENWEBUI_API_KEY}',
+            },
+        ) as response:
+            if response.status != 200:
+                error_body = await response.text()
+                raise Exception(f'OpenWebUI error: {response.status} - {error_body}')
+
+            # Stream SSE events line by line
+            async for line, _ in response.content.iter_chunks():
+                text = line.decode('utf-8')
+                yield text
+
     # ─── HTTP Helpers ────
 
     async def _get(self, path: str, params: Optional[dict] = None) -> Any:

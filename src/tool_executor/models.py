@@ -56,6 +56,7 @@ class ChatCompletionRequest(BaseModel):
 class Delta(BaseModel):
     role: Optional[Literal['assistant', 'tool']] = None
     content: Optional[str] = None
+    reasoning: Optional[str] = None
     tool_calls: Optional[list[ToolCall]] = None
 
 
