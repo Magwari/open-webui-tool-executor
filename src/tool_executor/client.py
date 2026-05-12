@@ -305,17 +305,83 @@ class OpenWebUIClient:
 
     # ─── list_knowledge (attached model knowledge) ───
 
-    async def list_knowledge(self) -> str:
+    async def list_knowledge(self, model_id: str = '') -> str:
         """
-        List knowledge attached to the current model.
-        NOTE: This requires __model_knowledge__ context which is unavailable via proxy.
+        List knowledge bases, files, and notes attached to the given model.
+
+        Fetches model meta via /api/v1/models/model?id={model_id}, extracts
+        knowledge base references, then resolves each KB's details and files.
+        Also fetches user notes via /api/v1/notes.
         """
-        return json.dumps({
+        result = {
             'knowledge_bases': [],
             'files': [],
             'notes': [],
-            'note': 'Model-attached knowledge is not available through the proxy API.'
-        })
+        }
+
+        # 1. Fetch model meta to get knowledge base references
+        try:
+            model_data = await self._get('/api/v1/models/model', params={'id': model_id})
+        except Exception as e:
+            log.warning(f'list_knowledge: failed to fetch model {model_id}: {e}')
+            return json.dumps(result)
+
+        if not model_data:
+            return json.dumps(result)
+
+        # 2. Extract knowledge base IDs from model meta
+        meta = model_data.get('meta') or {}
+        knowledge_refs = meta.get('knowledge') or []
+
+        # 3. Resolve each knowledge base
+        fetched_kb_ids = set()
+        for kb_ref in knowledge_refs:
+            kb_id = None
+            if isinstance(kb_ref, dict):
+                kb_id = kb_ref.get('id')
+            elif isinstance(kb_ref, str):
+                kb_id = kb_ref
+
+            if not kb_id or kb_id in fetched_kb_ids:
+                continue
+            fetched_kb_ids.add(kb_id)
+
+            try:
+                kb_data = await self._get(f'/api/v1/knowledge/{kb_id}')
+                if not kb_data:
+                    continue
+
+                result['knowledge_bases'].append({
+                    'id': kb_data.get('id'),
+                    'name': kb_data.get('name'),
+                    'description': kb_data.get('description', ''),
+                })
+
+                # Extract files from knowledge base
+                kb_files = kb_data.get('files') or []
+                for f in kb_files:
+                    result['files'].append({
+                        'id': f.get('id'),
+                        'filename': f.get('filename'),
+                        'knowledge_id': kb_id,
+                    })
+            except Exception as e:
+                log.warning(f'list_knowledge: failed to fetch knowledge {kb_id}: {e}')
+                continue
+
+        # 4. Fetch user notes
+        try:
+            notes_data = await self._get('/api/v1/notes')
+            if isinstance(notes_data, list):
+                for n in notes_data:
+                    result['notes'].append({
+                        'id': n.get('id'),
+                        'title': n.get('title'),
+                    })
+        except Exception as e:
+            log.warning(f'list_knowledge: failed to fetch notes: {e}')
+
+        return json.dumps(result)
 
     # ═══════════════════════════════════════════
     # Web Search Tools  (signatures match builtin.py)

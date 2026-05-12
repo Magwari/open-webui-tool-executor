@@ -211,6 +211,10 @@ async def chat_stream(
 
                 # Execute tool
                 try:
+                    # Inject model_id for list_knowledge tool
+                    if tool_name == 'list_knowledge':
+                        args.setdefault('model_id', model_id)
+
                     result = await dispatch_tool(tool_name, args)
                     error = None
                 except Exception as e:
@@ -313,6 +317,11 @@ async def chat_completions(request: ChatCompletionRequest):
                             args = json.loads(arguments_json)
                         else:
                             args = arguments_json
+
+                        # Inject model_id for list_knowledge tool
+                        if tool_name == 'list_knowledge':
+                            args.setdefault('model_id', request.model)
+
                         result = await dispatch_tool(tool_name, args)
                     except Exception as e:
                         result = f'Error: {e}'
