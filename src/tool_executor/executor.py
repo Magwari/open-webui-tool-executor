@@ -58,6 +58,7 @@ def execute_code_sync(code: str) -> dict[str, Any]:
 
     old_stdout = sys.stdout
     old_stderr = sys.stderr
+    old_import = builtins.__import__
     sys.stdout = stdout_buffer
     sys.stderr = stderr_buffer
 
@@ -113,6 +114,7 @@ def execute_code_sync(code: str) -> dict[str, Any]:
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
+        builtins.__import__ = old_import
 
 
 async def execute_code(code: str, timeout: Optional[int] = None) -> str:
